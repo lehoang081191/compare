@@ -11,9 +11,9 @@
 
 namespace Symfony\Component\DependencyInjection\Compiler;
 
+use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\DefinitionDecorator;
-use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Exception\RuntimeException;
 
 /**
@@ -31,8 +31,6 @@ class ResolveDefinitionTemplatesPass implements CompilerPassInterface
 
     /**
      * Process the ContainerBuilder to replace DefinitionDecorator instances with their real Definition instances.
-     *
-     * @param ContainerBuilder $container
      */
     public function process(ContainerBuilder $container)
     {
@@ -60,7 +58,7 @@ class ResolveDefinitionTemplatesPass implements CompilerPassInterface
                 $arguments[$k] = $argument = $container->getDefinition($k);
                 $this->currentId = $k;
             }
-            if (is_array($argument)) {
+            if (\is_array($argument)) {
                 $arguments[$k] = $this->resolveArguments($container, $argument);
             } elseif ($argument instanceof Definition) {
                 if ($argument instanceof DefinitionDecorator) {
@@ -96,11 +94,11 @@ class ResolveDefinitionTemplatesPass implements CompilerPassInterface
      */
     private function resolveDefinition(ContainerBuilder $container, DefinitionDecorator $definition)
     {
-        if (!$container->has($parent = $definition->getParent())) {
+        if (!$container->hasDefinition($parent = $definition->getParent())) {
             throw new RuntimeException(sprintf('The parent definition "%s" defined for definition "%s" does not exist.', $parent, $this->currentId));
         }
 
-        $parentDef = $container->findDefinition($parent);
+        $parentDef = $container->getDefinition($parent);
         if ($parentDef instanceof DefinitionDecorator) {
             $id = $this->currentId;
             $this->currentId = $parent;
@@ -113,12 +111,21 @@ class ResolveDefinitionTemplatesPass implements CompilerPassInterface
         $def = new Definition();
 
         // merge in parent definition
-        // purposely ignored attributes: abstract, tags
+        // purposely ignored attributes: scope, abstract, tags
         $def->setClass($parentDef->getClass());
         $def->setArguments($parentDef->getArguments());
         $def->setMethodCalls($parentDef->getMethodCalls());
         $def->setProperties($parentDef->getProperties());
         $def->setAutowiringTypes($parentDef->getAutowiringTypes());
+        if ($parentDef->getFactoryClass(false)) {
+            $def->setFactoryClass($parentDef->getFactoryClass(false));
+        }
+        if ($parentDef->getFactoryMethod(false)) {
+            $def->setFactoryMethod($parentDef->getFactoryMethod(false));
+        }
+        if ($parentDef->getFactoryService(false)) {
+            $def->setFactoryService($parentDef->getFactoryService(false));
+        }
         if ($parentDef->isDeprecated()) {
             $def->setDeprecated(true, $parentDef->getDeprecationMessage('%service_id%'));
         }
@@ -133,6 +140,15 @@ class ResolveDefinitionTemplatesPass implements CompilerPassInterface
         $changes = $definition->getChanges();
         if (isset($changes['class'])) {
             $def->setClass($definition->getClass());
+        }
+        if (isset($changes['factory_class'])) {
+            $def->setFactoryClass($definition->getFactoryClass(false));
+        }
+        if (isset($changes['factory_method'])) {
+            $def->setFactoryMethod($definition->getFactoryMethod(false));
+        }
+        if (isset($changes['factory_service'])) {
+            $def->setFactoryService($definition->getFactoryService(false));
         }
         if (isset($changes['factory'])) {
             $def->setFactory($definition->getFactory());
@@ -175,7 +191,7 @@ class ResolveDefinitionTemplatesPass implements CompilerPassInterface
                 throw new RuntimeException(sprintf('Invalid argument key "%s" found.', $k));
             }
 
-            $index = (int) substr($k, strlen('index_'));
+            $index = (int) substr($k, \strlen('index_'));
             $def->replaceArgument($index, $v);
         }
 
@@ -185,7 +201,7 @@ class ResolveDefinitionTemplatesPass implements CompilerPassInterface
         }
 
         // append method calls
-        if (count($calls = $definition->getMethodCalls()) > 0) {
+        if (\count($calls = $definition->getMethodCalls()) > 0) {
             $def->setMethodCalls(array_merge($def->getMethodCalls(), $calls));
         }
 
@@ -196,6 +212,7 @@ class ResolveDefinitionTemplatesPass implements CompilerPassInterface
 
         // these attributes are always taken from the child
         $def->setAbstract($definition->isAbstract());
+        $def->setScope($definition->getScope(false), false);
         $def->setShared($definition->isShared());
         $def->setTags($definition->getTags());
 
